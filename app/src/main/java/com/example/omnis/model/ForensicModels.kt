@@ -104,6 +104,87 @@ data class ContradictionEntry(
 )
 
 @JsonClass(generateAdapter = true)
+data class CorrelationEntity(
+    val entityType: String, // "PHONE", "DEVICE_ID", "IP_ADDRESS", "LOCATION", "EMAIL"
+    val valValue: String,
+    val sourceAnnotations: List<String>,
+    val linkedActors: List<String>,
+    val riskRating: String // "HIGH", "MEDIUM", "LOW"
+)
+
+@JsonClass(generateAdapter = true)
+data class BlockchainEvent(
+    val walletAddress: String,
+    val coin: String, // "BTC", "ETH", "USDT"
+    val txHash: String,
+    val value: String,
+    val direction: String, // "IN", "OUT"
+    val status: String // "RESOLVED", "UNVERIFIED"
+)
+
+@JsonClass(generateAdapter = true)
+data class StatementEvolution(
+    val actor: String,
+    val topic: String,
+    val dateOrSource: String,
+    val statementText: String,
+    val alignmentDrift: String // "CONSISTENT", "MODERATE_SHIFT", "CONTRADICTION"
+)
+
+@JsonClass(generateAdapter = true)
+data class WitnessCluster(
+    val topicId: String,
+    val topicSummary: String,
+    val actorsInvolved: List<String>,
+    val clashDescription: String,
+    val conflictDensityScore: Double
+)
+
+@JsonClass(generateAdapter = true)
+data class CommitmentDegradation(
+    val actor: String,
+    val chronologicalPhrases: List<String>, // ["I will pay", "I plan to pay", "No deal existed"]
+    val shiftPath: String, // "OBLIGATION -> INTENTION -> DENIAL"
+    val signalStrength: String // "SEVERE", "STABLE"
+)
+
+@JsonClass(generateAdapter = true)
+data class StatuteAlignedFinding(
+    val findingId: String,
+    val findingSummary: String,
+    val proposedStatute: String,
+    val codeSection: String,
+    val elementsMetMapping: List<String> // ["Element X: Evidence Reference"]
+)
+
+@JsonClass(generateAdapter = true)
+data class LiabilityScorecard(
+    val actor: String,
+    val verifiedContradictionsCount: Int,
+    val candidateContradictionsCount: Int,
+    val automatedTags: List<String>, // ["#Cybercrime", "#Fraud"]
+    val redFlagsCount: Int,
+    val confidenceWeightedDishonestyIndex: Double // 0.0 to 100.0%
+)
+
+@JsonClass(generateAdapter = true)
+data class ChainOfCustodyCert(
+    val evidenceHashPrefix: String,
+    val sealingOfficer: String = "Verum Omnis Autoseal",
+    val utcTimestamp: String,
+    val cryptographicSignature: String
+)
+
+@JsonClass(generateAdapter = true)
+data class HumanReviewRequest(
+    val isTriggered: Boolean,
+    val anomalyType: String,
+    val supportingAnchors: List<String>,
+    val proposedHypotheses: List<String>,
+    val resolutionStatus: String // "PENDING", "RESOLVED"
+)
+
+@JsonClass(generateAdapter = true)
 data class ReportRenderInput(
     val caseId: String,
     val evidenceHash: String,
@@ -122,7 +203,17 @@ data class ReportRenderInput(
     val contradictions: List<ContradictionEntry> = emptyList(),
     val legalMappings: List<String> = emptyList(),
     val legalIssueHints: List<String> = emptyList(),
-    val boundaryNote: String = "This is a forensic conclusion, not a judicial verdict."
+    val boundaryNote: String = "This is a forensic conclusion, not a judicial verdict.",
+    val b10CorrelationFindings: List<CorrelationEntity> = emptyList(),
+    val blockchainTraces: List<BlockchainEvent> = emptyList(),
+    val statementEvolutionLedger: List<StatementEvolution> = emptyList(),
+    val crossWitnessClusters: List<WitnessCluster> = emptyList(),
+    val commitmentDegradationSignals: List<CommitmentDegradation> = emptyList(),
+    val statuteMappings: List<StatuteAlignedFinding> = emptyList(),
+    val actorLiabilityScorecards: List<LiabilityScorecard> = emptyList(),
+    val chainOfCustody: ChainOfCustodyCert? = null,
+    val constitutionalConstraintHeader: String = "{}",
+    val humanReviewRequest: HumanReviewRequest? = null
 )
 
 @JsonClass(generateAdapter = true)

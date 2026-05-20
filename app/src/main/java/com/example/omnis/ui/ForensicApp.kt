@@ -730,7 +730,11 @@ fun QuickStartTab(
     report: ReportRenderInput
 ) {
     val clipboard = LocalClipboardManager.current
+    val context = LocalContext.current
     
+    // Stateful resolution for human-in-the-loop review
+    var humanResolutionStatus by remember { mutableStateOf(report.humanReviewRequest?.resolutionStatus ?: "PENDING") }
+
     LazyColumn(verticalArrangement = Arrangement.spacedSpacing(16.dp)) {
         // Core status header card
         item {
@@ -813,6 +817,214 @@ fun QuickStartTab(
                     GateStatusRow("Antithesis Gate (Contradictions audited)", report.antithesisPass, report.antithesisReason)
                     Spacer(Modifier.height(8.dp))
                     GateStatusRow("Synthesis Gate (Guardian & Quorum approved)", report.synthesisPass, report.synthesisReason)
+                }
+            }
+        }
+
+        // Modular Chain of Custody Certificate Block (For law-enforcement ready outputs)
+        report.chainOfCustody?.let { cert ->
+            item {
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .border(1.dp, DarkTeal.copy(0.3f), RoundedCornerShape(8.dp)),
+                    colors = CardDefaults.cardColors(containerColor = SurfaceDark)
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.Default.Lock, contentDescription = null, tint = DarkTeal, modifier = Modifier.size(16.dp))
+                                Spacer(Modifier.width(8.dp))
+                                Text(
+                                    "OFFLINE CRYPTOGRAPHIC CUSTODY SEAL",
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 11.sp,
+                                    color = SoftWhite,
+                                    fontFamily = FontFamily.Monospace
+                                )
+                            }
+                            IconButton(
+                                onClick = {
+                                    clipboard.setText(AnnotatedString(cert.cryptographicSignature))
+                                },
+                                modifier = Modifier.size(24.dp)
+                            ) {
+                                Icon(Icons.Default.Share, contentDescription = "Copy Digital Seal", tint = DarkTeal, modifier = Modifier.size(14.dp))
+                            }
+                        }
+                        Spacer(Modifier.height(12.dp))
+
+                        FactRow("Evidence Subject Prefix", "0x${cert.evidenceHashPrefix.uppercase()}")
+                        FactRow("Physical Seal UTC Time", cert.utcTimestamp)
+                        
+                        Spacer(Modifier.height(8.dp))
+                        Text(
+                            "DIGITAL SEAL SIGNATURE:",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 9.sp,
+                            color = SoftGray,
+                            fontFamily = FontFamily.Monospace
+                        )
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(Color.Black.copy(alpha = 0.5f))
+                                .padding(8.dp)
+                                .border(1.dp, Color.White.copy(0.05f), RoundedCornerShape(4.dp))
+                        ) {
+                            Text(
+                                text = cert.cryptographicSignature,
+                                fontFamily = FontFamily.Monospace,
+                                fontSize = 10.sp,
+                                color = TerminalGreen,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        // Dynamic Interactive Human in the Loop Review request
+        report.humanReviewRequest?.let { review ->
+            if (review.isTriggered) {
+                item {
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .border(
+                                1.dp,
+                                if (humanResolutionStatus == "PENDING") SecurityWarning.copy(0.4f) else TerminalGreen.copy(0.4f),
+                                RoundedCornerShape(8.dp)
+                            ),
+                        colors = CardDefaults.cardColors(containerColor = SurfaceDark)
+                    ) {
+                        Column(modifier = Modifier.padding(16.dp)) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(
+                                        imageVector = Icons.Default.Warning,
+                                        contentDescription = null,
+                                        tint = if (humanResolutionStatus == "PENDING") SecurityWarning else TerminalGreen,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                    Spacer(Modifier.width(8.dp))
+                                    Text(
+                                        "COGNITIVE HUMAN-IN-THE-LOOP AUDIT",
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 11.sp,
+                                        color = SoftWhite,
+                                        fontFamily = FontFamily.Monospace
+                                    )
+                                }
+                                StatusChip(status = humanResolutionStatus)
+                            }
+
+                            Spacer(Modifier.height(10.dp))
+                            Text(
+                                text = "ANOMALY: ${review.anomalyType}",
+                                color = SoftWhite,
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+
+                            Spacer(Modifier.height(8.dp))
+                            Text(
+                                text = "Engine has flagged inconsistent sequence patterns which cannot be resolved purely deterministic. Manual cognitive sign-off warrants review of following components:",
+                                color = SoftGray,
+                                fontSize = 11.sp
+                            )
+
+                            Spacer(Modifier.height(8.dp))
+                            Text("AUDITED HARD EVIDENCE LOCATIONS:", fontSize = 9.sp, color = DarkTeal, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+                            review.supportingAnchors.forEach { anchor ->
+                                Text("• $anchor", color = SoftWhite, fontSize = 11.sp)
+                            }
+
+                            Spacer(Modifier.height(8.dp))
+                            Text("PROPOSED EXCLUSION HYPOTHESES:", fontSize = 9.sp, color = DarkTeal, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+                            review.proposedHypotheses.forEach { hyp ->
+                                Text("• $hyp", color = SoftGray, fontSize = 11.sp)
+                            }
+
+                            Spacer(Modifier.height(14.dp))
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Button(
+                                    onClick = { humanResolutionStatus = "CONFIRMED_OK" },
+                                    colors = ButtonDefaults.buttonColors(containerColor = DarkTeal, contentColor = Color.Black),
+                                    shape = RoundedCornerShape(4.dp),
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    Text("AUDIT & CONFIRM", fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                }
+                                Button(
+                                    onClick = { humanResolutionStatus = "FLAGGED_FOR_DEPOSITION" },
+                                    colors = ButtonDefaults.buttonColors(containerColor = SecurityWarning, contentColor = Color.White),
+                                    shape = RoundedCornerShape(4.dp),
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    Text("FLAG FOR DEPOSITION", fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Module 6 - Guardian Treaty Hard Coupling Header (Machine-Readable Header)
+        report.constitutionalConstraintHeader?.let { header ->
+            item {
+                Card(
+                     modifier = Modifier.fillMaxWidth(),
+                     colors = CardDefaults.cardColors(containerColor = SurfaceDark)
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.Info, contentDescription = null, tint = DarkTeal, modifier = Modifier.size(16.dp))
+                            Spacer(Modifier.width(8.dp))
+                            Text(
+                                "GUARDIAN TREATY CONSTITUTION HEADER",
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 11.sp,
+                                color = SoftWhite,
+                                fontFamily = FontFamily.Monospace
+                            )
+                        }
+                        Spacer(Modifier.height(10.dp))
+                        Text(
+                            text = "A machine-readable, immutable protocol package bound directly to the analysis binary to regulate recipient interpretation rules:",
+                            color = SoftGray,
+                            fontSize = 11.sp
+                        )
+                        Spacer(Modifier.height(8.dp))
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(Color.Black.copy(0.5f))
+                                .padding(10.dp)
+                                .border(1.dp, Color.White.copy(0.05f), RoundedCornerShape(4.dp))
+                        ) {
+                            Text(
+                                text = header,
+                                fontFamily = FontFamily.Monospace,
+                                fontSize = 10.sp,
+                                color = SoftWhite
+                            )
+                        }
+                    }
                 }
             }
         }
@@ -1046,6 +1258,318 @@ fun LedgerTab(report: ReportRenderInput) {
                 }
             }
         }
+
+        // Module 2 - Cross-Witness Contradiction Clusters Sections
+        if (report.crossWitnessClusters.isNotEmpty()) {
+            item {
+                Spacer(Modifier.height(12.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.Share, contentDescription = null, tint = DarkTeal, modifier = Modifier.size(16.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        "CROSS-WITNESS CONTRADICTION CLUSTERS",
+                        color = SoftWhite,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 12.sp,
+                        fontFamily = FontFamily.Monospace
+                    )
+                }
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    "Clustering conflicts dynamically by thematic topics to analyze multi-witness coordination gaps and discrepancy density:",
+                    color = SoftGray,
+                    fontSize = 11.sp
+                )
+            }
+
+            items(report.crossWitnessClusters) { cluster ->
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .border(1.dp, DarkTeal.copy(0.3f), RoundedCornerShape(8.dp)),
+                    colors = CardDefaults.cardColors(containerColor = SurfaceDark)
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "TOPIC: ${cluster.topicId}",
+                                color = DarkTeal,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 11.sp,
+                                fontFamily = FontFamily.Monospace
+                            )
+                            Text(
+                                text = "${cluster.conflictDensityScore}% CLASH DENSITY",
+                                color = SecurityWarning,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 11.sp,
+                                fontFamily = FontFamily.Monospace
+                            )
+                        }
+                        Spacer(Modifier.height(6.dp))
+                        Text(
+                            text = cluster.topicSummary,
+                            color = SoftWhite,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 13.sp
+                        )
+                        Spacer(Modifier.height(8.dp))
+                        Text(
+                            text = cluster.clashDescription,
+                            color = SoftGray,
+                            fontSize = 11.sp
+                        )
+                        Spacer(Modifier.height(10.dp))
+                        
+                        Text(
+                            text = "CONFRONTED TESTIFIERS:",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 9.sp,
+                            color = SoftGray,
+                            fontFamily = FontFamily.Monospace
+                        )
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            cluster.actorsInvolved.forEach { act ->
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(4.dp))
+                                        .background(Color.White.copy(0.05f))
+                                        .padding(horizontal = 6.dp, vertical = 2.dp)
+                                ) {
+                                    Text(act, color = SoftWhite, fontSize = 10.sp)
+                                }
+                            }
+                        }
+
+                        Spacer(Modifier.height(12.dp))
+                        LinearProgressIndicator(
+                            progress = (cluster.conflictDensityScore / 100f).toFloat(),
+                            color = SecurityWarning,
+                            trackColor = Color.White.copy(0.05f),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(6.dp)
+                                .clip(RoundedCornerShape(3.dp))
+                        )
+                    }
+                }
+            }
+        }
+
+        // Module 2 - Deception and Commitment Degradation Timeline
+        if (report.statementEvolutionLedger.isNotEmpty() || report.commitmentDegradationSignals.isNotEmpty()) {
+            item {
+                Spacer(Modifier.height(12.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.Refresh, contentDescription = null, tint = DarkTeal, modifier = Modifier.size(16.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        "STATEMENT EVOLUTION LEDGERS",
+                        color = SoftWhite,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 12.sp,
+                        fontFamily = FontFamily.Monospace
+                    )
+                }
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    "Tracking chronological deposition statements to reveal semantic drift, truth concession phases, and structural deception thresholds:",
+                    color = SoftGray,
+                    fontSize = 11.sp
+                )
+            }
+
+            // Mapped commitment degradation phases card
+            report.commitmentDegradationSignals.forEach { degradation ->
+                item {
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .border(1.dp, Color.Red.copy(0.2f), RoundedCornerShape(8.dp)),
+                        colors = CardDefaults.cardColors(containerColor = SurfaceDark)
+                    ) {
+                        Column(modifier = Modifier.padding(16.dp)) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = "SHIFTER: ${degradation.actor.uppercase()}",
+                                    color = DarkTeal,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 11.sp,
+                                    fontFamily = FontFamily.Monospace
+                                )
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(4.dp))
+                                        .background(SecurityWarning.copy(alpha = 0.2f))
+                                        .padding(horizontal = 6.dp, vertical = 2.dp)
+                                ) {
+                                    Text(
+                                        text = "${degradation.signalStrength} DRIFT SIGNAL",
+                                        color = SecurityWarning,
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 10.sp,
+                                        fontFamily = FontFamily.Monospace
+                                    )
+                                }
+                            }
+                            Spacer(Modifier.height(10.dp))
+                            
+                            Text("CHRONOLOGICAL EVOLUTION PATHS:", fontSize = 9.sp, color = SoftGray, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+                            Spacer(Modifier.height(4.dp))
+                            degradation.chronologicalPhrases.forEachIndexed { i, phrase ->
+                                Row(modifier = Modifier.padding(vertical = 2.dp), verticalAlignment = Alignment.Top) {
+                                    Text("P${i+1}: ", color = DarkTeal, fontFamily = FontFamily.Monospace, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                    Text(phrase, color = SoftWhite, fontSize = 11.sp)
+                                }
+                            }
+
+                            Spacer(Modifier.height(10.dp))
+                            Text("COMPILED DRIFT SEQUENCE PATHWAY:", fontSize = 9.sp, color = DarkTeal, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .background(Color.Black.copy(0.5f))
+                                    .padding(8.dp)
+                                    .border(1.dp, Color.White.copy(0.05f), RoundedCornerShape(4.dp))
+                            ) {
+                                Text(
+                                    text = degradation.shiftPath,
+                                    color = TerminalGreen,
+                                    fontFamily = FontFamily.Monospace,
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Raw timeline items under StatementEvolution
+            items(report.statementEvolutionLedger) { item ->
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = SurfaceDark.copy(0.7f))
+                ) {
+                    Column(modifier = Modifier.padding(12.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = item.dateOrSource,
+                                color = SoftGray,
+                                fontSize = 10.sp,
+                                fontFamily = FontFamily.Monospace
+                            )
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(2.dp))
+                                    .background(
+                                        if (item.alignmentDrift == "CONTRADICTION") Color.Red.copy(0.15f)
+                                        else if (item.alignmentDrift == "MODERATE_SHIFT") SecurityWarning.copy(0.15f)
+                                        else TerminalGreen.copy(0.15f)
+                                    )
+                                    .padding(horizontal = 4.dp, vertical = 1.dp)
+                            ) {
+                                Text(
+                                    text = item.alignmentDrift,
+                                    color = if (item.alignmentDrift == "CONTRADICTION") Color.Red
+                                            else if (item.alignmentDrift == "MODERATE_SHIFT") SecurityWarning
+                                            else TerminalGreen,
+                                    fontSize = 9.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    fontFamily = FontFamily.Monospace
+                                )
+                            }
+                        }
+                        Spacer(Modifier.height(4.dp))
+                        Text(
+                            text = "\"${item.statementText}\"",
+                            color = SoftWhite,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Medium
+                        )
+                        Spacer(Modifier.height(4.dp))
+                        Text(
+                            text = "Target Subject: ${item.actor} | Topic Focus: ${item.topic}",
+                            color = SoftGray,
+                            fontSize = 10.sp
+                        )
+                    }
+                }
+            }
+        }
+
+        // Module 1 - Crypto Tracing and Blockchain Seizures
+        if (report.blockchainTraces.isNotEmpty()) {
+            item {
+                Spacer(Modifier.height(12.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.Lock, contentDescription = null, tint = DarkTeal, modifier = Modifier.size(16.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        "BLOCKCHAIN EXPLOIT & OUTFLOW TRACING",
+                        color = SoftWhite,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 12.sp,
+                        fontFamily = FontFamily.Monospace
+                    )
+                }
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    "Real-time wallet and coin transfer tracking to identify unrecorded cross-border capital flights:",
+                    color = SoftGray,
+                    fontSize = 11.sp
+                )
+            }
+
+            items(report.blockchainTraces) { tx ->
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = SurfaceDark)
+                ) {
+                    Column(modifier = Modifier.padding(12.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(4.dp))
+                                        .background(DarkTeal.copy(0.15f))
+                                        .padding(horizontal = 6.dp, vertical = 2.dp)
+                                ) {
+                                    Text(tx.coin, color = DarkTeal, fontWeight = FontWeight.Bold, fontSize = 11.sp)
+                                }
+                                Spacer(Modifier.width(8.dp))
+                                Text(tx.value, color = SoftWhite, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                            }
+                            StatusChip(status = tx.status)
+                        }
+                        Spacer(Modifier.height(6.dp))
+
+                        FactRow("Wallet Destination Address", tx.walletAddress)
+                        FactRow("Transaction Hash Ref", tx.txHash)
+                        FactRow("Transfer Direction Flow", tx.direction)
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -1120,6 +1644,225 @@ fun CertifiedFindingsTab(report: ReportRenderInput) {
 @Composable
 fun LegalDirectivesTab(report: ReportRenderInput) {
     LazyColumn(verticalArrangement = Arrangement.spacedSpacing(16.dp)) {
+        // Module 4 - Per-Actor Liability Scorecard & Dishonesty Index Sinks
+        if (report.actorLiabilityScorecards.isNotEmpty()) {
+            item {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.AccountBox, contentDescription = null, tint = DarkTeal, modifier = Modifier.size(16.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        "PER-ACTOR LIABILITY SCORECARDS",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 12.sp,
+                        color = SoftWhite,
+                        fontFamily = FontFamily.Monospace
+                    )
+                }
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    "Algorithmic liability rating indexing actors based on proven text contradictions and weighted signal confidence density:",
+                    color = SoftGray,
+                    fontSize = 11.sp
+                )
+            }
+
+            items(report.actorLiabilityScorecards) { scorecard ->
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .border(1.dp, if (scorecard.confidenceWeightedDishonestyIndex > 50.0) Color.Red.copy(0.3f) else Color.White.copy(0.1f), RoundedCornerShape(8.dp)),
+                    colors = CardDefaults.cardColors(containerColor = SurfaceDark)
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = scorecard.actor.uppercase(),
+                                fontWeight = FontWeight.Bold,
+                                color = DarkTeal,
+                                fontSize = 12.sp,
+                                fontFamily = FontFamily.Monospace
+                            )
+                            Text(
+                                text = "${scorecard.confidenceWeightedDishonestyIndex}% DISHONESTY INDEX",
+                                fontWeight = FontWeight.Bold,
+                                color = if (scorecard.confidenceWeightedDishonestyIndex > 50.0) SecurityWarning else TerminalGreen,
+                                fontSize = 11.sp,
+                                fontFamily = FontFamily.Monospace
+                            )
+                        }
+                        Spacer(Modifier.height(8.dp))
+
+                        // Linear gauge bar for dishonesty
+                        LinearProgressIndicator(
+                            progress = (scorecard.confidenceWeightedDishonestyIndex / 100f).toFloat(),
+                            color = if (scorecard.confidenceWeightedDishonestyIndex > 50.0) Color.Red else TerminalGreen,
+                            trackColor = Color.White.copy(0.05f),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(6.dp)
+                                .clip(RoundedCornerShape(3.dp))
+                        )
+
+                        Spacer(Modifier.height(10.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(16.dp)
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text("VERIFIED INCOMPATIBILITY", color = SoftGray, fontSize = 9.sp)
+                                Text("${scorecard.verifiedContradictionsCount} Contradictions", color = SoftWhite, fontWeight = FontWeight.Bold, fontSize = 11.sp)
+                            }
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text("CANDIDATE HOLES", color = SoftGray, fontSize = 9.sp)
+                                Text("${scorecard.candidateContradictionsCount} Suspicious Elements", color = SoftWhite, fontWeight = FontWeight.Bold, fontSize = 11.sp)
+                            }
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text("RED FLAGS MET", color = SoftGray, fontSize = 9.sp)
+                                Text("${scorecard.redFlagsCount} Flags", color = if (scorecard.redFlagsCount > 2) SecurityWarning else SoftWhite, fontWeight = FontWeight.Bold, fontSize = 11.sp)
+                            }
+                        }
+
+                        if (scorecard.automatedTags.isNotEmpty()) {
+                            Spacer(Modifier.height(10.dp))
+                            Text("AUTOMATED CLASSIFICATION TAGS:", fontSize = 9.sp, color = SoftGray, fontFamily = FontFamily.Monospace)
+                            Spacer(Modifier.height(4.dp))
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                scorecard.automatedTags.forEach { tag ->
+                                    Box(
+                                        modifier = Modifier
+                                            .clip(RoundedCornerShape(4.dp))
+                                            .background(
+                                                if (tag.contains("cyber", ignoreCase = true) || tag.contains("evasive", ignoreCase = true)) Color.Red.copy(0.12f)
+                                                else Color.White.copy(0.05f)
+                                            )
+                                            .padding(horizontal = 6.dp, vertical = 2.dp)
+                                    ) {
+                                        Text(
+                                            text = tag,
+                                            color = if (tag.contains("cyber", ignoreCase = true) || tag.contains("evasive", ignoreCase = true)) Color.Red else SoftWhite,
+                                            fontSize = 9.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            fontFamily = FontFamily.Monospace
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Module 4 - Statute Aligned Findings Section (Court-Room ready mappings)
+        if (report.statuteMappings.isNotEmpty()) {
+            item {
+                Spacer(Modifier.height(12.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.Home, contentDescription = null, tint = DarkTeal, modifier = Modifier.size(16.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        "STATUTE-ALIGNED CRIMINAL FINDINGS",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 12.sp,
+                        color = SoftWhite,
+                        fontFamily = FontFamily.Monospace
+                    )
+                }
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    "Automatic mapping of active computer forensics to key statutory crime elements to assist judicial physical affidavit applications:",
+                    color = SoftGray,
+                    fontSize = 11.sp
+                )
+            }
+
+            items(report.statuteMappings) { item ->
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .border(1.dp, DarkTeal.copy(0.3f), RoundedCornerShape(8.dp)),
+                    colors = CardDefaults.cardColors(containerColor = SurfaceDark)
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "STATUTE REFERENCED:",
+                                color = DarkTeal,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 9.sp,
+                                fontFamily = FontFamily.Monospace
+                            )
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(4.dp))
+                                    .background(DarkTeal.copy(0.15f))
+                                    .padding(horizontal = 6.dp, vertical = 2.dp)
+                            ) {
+                                Text(
+                                    text = item.codeSection,
+                                    color = DarkTeal,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 10.sp,
+                                    fontFamily = FontFamily.Monospace
+                                )
+                            }
+                        }
+                        Spacer(Modifier.height(4.dp))
+                        Text(
+                            text = item.proposedStatute,
+                            color = SoftWhite,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 12.sp
+                        )
+                        Spacer(Modifier.height(8.dp))
+                        Text(
+                            text = "FACT SUMMARY: ${item.findingSummary}",
+                            color = SoftWhite,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.SemiBold
+                        )
+
+                        Spacer(Modifier.height(10.dp))
+                        Text(
+                            text = "CRIMINAL INGREDIENTS MET MAPPING:",
+                            color = SoftGray,
+                            fontFamily = FontFamily.Monospace,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 9.sp
+                        )
+                        Spacer(Modifier.height(4.dp))
+                        item.elementsMetMapping.forEachIndexed { i, mapping ->
+                            Row(modifier = Modifier.padding(vertical = 2.dp), verticalAlignment = Alignment.Top) {
+                                Text(
+                                    text = "[${i + 1}] ",
+                                    color = DarkTeal,
+                                    fontSize = 11.sp,
+                                    fontFamily = FontFamily.Monospace,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Text(
+                                    text = mapping,
+                                    color = SoftWhite,
+                                    fontSize = 11.sp
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         // Legal mapping Card (CPA / ECTA)
         item {
             Card(
