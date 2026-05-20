@@ -1,0 +1,6 @@
+{
+  "name": "Verum Omnis 5.2.7",
+  "description": "Offline deterministic forensic engine with nine-brain logic, contradiction auditing, and triple-verification reporting.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
