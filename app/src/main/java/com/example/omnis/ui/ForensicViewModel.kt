@@ -12,6 +12,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.nio.charset.StandardCharsets
 
 class ForensicViewModel(application: Application) : AndroidViewModel(application) {
@@ -60,10 +61,9 @@ class ForensicViewModel(application: Application) : AndroidViewModel(application
     // Pre-seed sample database if it's empty, so the user has something immediately
     init {
         viewModelScope.launch {
-            allCases.collect { list ->
-                if (list.isEmpty()) {
-                    seedDefaultSamples()
-                }
+            val list = repository.allCasesFlow.first()
+            if (list.isEmpty()) {
+                seedDefaultSamples()
             }
         }
     }
@@ -234,7 +234,7 @@ class ForensicViewModel(application: Application) : AndroidViewModel(application
     }
 
     // Inject preset vector cases per the test requirements on page 15 of PDF
-    private suspend fun seedDefaultSamples() {
+    private suspend fun seedDefaultSamples() = withContext(Dispatchers.Default) {
         val sampleList = listOf(
             Triple(
                 "Acme Invoice Audit.pdf",
