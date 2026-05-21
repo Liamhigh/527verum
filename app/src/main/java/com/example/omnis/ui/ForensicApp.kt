@@ -2302,7 +2302,7 @@ fun exportForensicReportPdf(context: android.content.Context, c: ForensicCase, r
         
         val uri = FileProvider.getUriForFile(
             context,
-            "com.aistudio.verumomnis.vofnsc.fileprovider",
+            "${context.packageName}.fileprovider",
             pdfFile
         )
         val shareIntent = Intent(Intent.ACTION_SEND).apply {
@@ -2311,7 +2311,10 @@ fun exportForensicReportPdf(context: android.content.Context, c: ForensicCase, r
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             putExtra(Intent.EXTRA_SUBJECT, "Sealed Court-Ready Forensic Certificate - Case ${report.caseId}")
         }
-        context.startActivity(Intent.createChooser(shareIntent, "Share or Save Court-Sealed Forensic PDF"))
+        val chooser = Intent.createChooser(shareIntent, "Share or Save Court-Sealed Forensic PDF").apply {
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+        context.startActivity(chooser)
         Toast.makeText(context, "Forensic Ledger Signed & Sealed Successfully", Toast.LENGTH_LONG).show()
     } catch (e: Exception) {
         Toast.makeText(context, "PDF Export Failure: ${e.localizedMessage}", Toast.LENGTH_SHORT).show()
