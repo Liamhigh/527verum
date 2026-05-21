@@ -43,6 +43,19 @@ import com.example.ui.theme.*
 import androidx.compose.ui.platform.LocalContext
 import com.example.omnis.data.*
 import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import android.net.Uri
+import androidx.compose.foundation.BorderStroke
+import android.graphics.pdf.PdfDocument
+import android.graphics.Paint
+import android.graphics.Canvas as AndroidCanvas
+import android.graphics.Color as AndroidColor
+import java.io.File
+import java.io.FileOutputStream
+import android.widget.Toast
+import androidx.core.content.FileProvider
+import android.content.Intent
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -527,6 +540,47 @@ fun IntakeFormDialog(
                 }
 
                 item {
+                    val context = LocalContext.current
+                    val pickerLauncher = rememberLauncherForActivityResult(
+                        contract = ActivityResultContracts.GetContent()
+                    ) { uri: Uri? ->
+                        uri?.let {
+                            val name = getFileNameFromUri(context, it)
+                            val text = readTextFromUri(context, it)
+                            title = name
+                            content = text
+                            // Auto-set the modality type depending on extension
+                            type = when {
+                                name.endsWith(".wav", true) || name.endsWith(".mp3", true) -> "AUDIO"
+                                name.endsWith(".mp4", true) || name.endsWith(".avi", true) -> "VIDEO"
+                                name.endsWith(".pdf", true) -> "DOCUMENT"
+                                else -> "TEXT"
+                            }
+                        }
+                    }
+
+                    OutlinedButton(
+                        onClick = { pickerLauncher.launch("*/*") },
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = DarkTeal),
+                        border = BorderStroke(1.dp, DarkTeal),
+                        shape = RoundedCornerShape(4.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Add,
+                            contentDescription = "Upload Live File"
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            "LOAD FILE FROM DEVICE DISK",
+                            fontFamily = FontFamily.Monospace,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+
+                item {
                     OutlinedTextField(
                         value = title,
                         onValueChange = { title = it },
@@ -764,6 +818,35 @@ fun QuickStartTab(
                         fontWeight = FontWeight.Bold,
                         color = SoftWhite
                     )
+
+                    Spacer(Modifier.height(12.dp))
+                    Button(
+                        onClick = {
+                            exportForensicReportPdf(context, c, report)
+                        },
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = TerminalGreen,
+                            contentColor = Color.Black
+                        ),
+                        shape = RoundedCornerShape(4.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(44.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Lock,
+                            contentDescription = null,
+                            modifier = Modifier.size(16.dp),
+                            tint = Color.Black
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            text = "SEAL & EXPORT COURT-READY PDF",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            fontFamily = FontFamily.Monospace
+                        )
+                    }
 
                     Spacer(Modifier.height(12.dp))
 
@@ -1302,13 +1385,20 @@ fun LedgerTab(report: ReportRenderInput) {
                                 fontSize = 11.sp,
                                 fontFamily = FontFamily.Monospace
                             )
-                            Text(
-                                text = "${cluster.conflictDensityScore}% CLASH DENSITY",
-                                color = SecurityWarning,
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 11.sp,
-                                fontFamily = FontFamily.Monospace
-                            )
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(4.dp))
+                                    .background(SecurityWarning.copy(alpha = 0.15f))
+                                    .padding(horizontal = 8.dp, vertical = 2.dp)
+                            ) {
+                                Text(
+                                    text = "DENSITY: ${cluster.conflictDensityOrdinal}",
+                                    color = SecurityWarning,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 11.sp,
+                                    fontFamily = FontFamily.Monospace
+                                )
+                            }
                         }
                         Spacer(Modifier.height(6.dp))
                         Text(
@@ -1347,17 +1437,6 @@ fun LedgerTab(report: ReportRenderInput) {
                                 }
                             }
                         }
-
-                        Spacer(Modifier.height(12.dp))
-                        LinearProgressIndicator(
-                            progress = (cluster.conflictDensityScore / 100f).toFloat(),
-                            color = SecurityWarning,
-                            trackColor = Color.White.copy(0.05f),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(6.dp)
-                                .clip(RoundedCornerShape(3.dp))
-                        )
                     }
                 }
             }
@@ -1670,7 +1749,11 @@ fun LegalDirectivesTab(report: ReportRenderInput) {
                 Card(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .border(1.dp, if (scorecard.confidenceWeightedDishonestyIndex > 50.0) Color.Red.copy(0.3f) else Color.White.copy(0.1f), RoundedCornerShape(8.dp)),
+                        .border(
+                            1.dp,
+                            if (scorecard.dishonestyOrdinal == "CRITICAL") Color.Red.copy(0.3f) else Color.White.copy(0.1f),
+                            RoundedCornerShape(8.dp)
+                        ),
                     colors = CardDefaults.cardColors(containerColor = SurfaceDark)
                 ) {
                     Column(modifier = Modifier.padding(16.dp)) {
@@ -1686,27 +1769,31 @@ fun LegalDirectivesTab(report: ReportRenderInput) {
                                 fontSize = 12.sp,
                                 fontFamily = FontFamily.Monospace
                             )
-                            Text(
-                                text = "${scorecard.confidenceWeightedDishonestyIndex}% DISHONESTY INDEX",
-                                fontWeight = FontWeight.Bold,
-                                color = if (scorecard.confidenceWeightedDishonestyIndex > 50.0) SecurityWarning else TerminalGreen,
-                                fontSize = 11.sp,
-                                fontFamily = FontFamily.Monospace
-                            )
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(4.dp))
+                                    .background(
+                                        when (scorecard.dishonestyOrdinal) {
+                                            "CRITICAL" -> Color.Red.copy(alpha = 0.15f)
+                                            "MODERATE" -> SecurityWarning.copy(alpha = 0.15f)
+                                            else -> TerminalGreen.copy(alpha = 0.15f)
+                                        }
+                                    )
+                                    .padding(horizontal = 8.dp, vertical = 2.dp)
+                            ) {
+                                Text(
+                                    text = "RATING: ${scorecard.dishonestyOrdinal}",
+                                    fontWeight = FontWeight.Bold,
+                                    color = when (scorecard.dishonestyOrdinal) {
+                                        "CRITICAL" -> Color.Red
+                                        "MODERATE" -> SecurityWarning
+                                        else -> TerminalGreen
+                                    },
+                                    fontSize = 11.sp,
+                                    fontFamily = FontFamily.Monospace
+                                )
+                            }
                         }
-                        Spacer(Modifier.height(8.dp))
-
-                        // Linear gauge bar for dishonesty
-                        LinearProgressIndicator(
-                            progress = (scorecard.confidenceWeightedDishonestyIndex / 100f).toFloat(),
-                            color = if (scorecard.confidenceWeightedDishonestyIndex > 50.0) Color.Red else TerminalGreen,
-                            trackColor = Color.White.copy(0.05f),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(6.dp)
-                                .clip(RoundedCornerShape(3.dp))
-                        )
-
                         Spacer(Modifier.height(10.dp))
                         Row(
                             modifier = Modifier.fillMaxWidth(),
@@ -2110,3 +2197,153 @@ fun AdvisoryChatTab(viewModel: ForensicViewModel) {
 
 // Utility extension for padding logic
 fun Arrangement.spacedSpacing(dp: androidx.compose.ui.unit.Dp) = Arrangement.spacedBy(dp)
+
+fun exportForensicReportPdf(context: android.content.Context, c: ForensicCase, report: ReportRenderInput) {
+    try {
+        val pdfDocument = PdfDocument()
+        val pageInfo = PdfDocument.PageInfo.Builder(612, 792, 1).create()
+        val page = pdfDocument.startPage(pageInfo)
+        val canvas: AndroidCanvas = page.canvas
+        
+        val textPaint = Paint().apply {
+            color = AndroidColor.BLACK
+            textSize = 10f
+            isAntiAlias = true
+        }
+        val headerPaint = Paint().apply {
+            color = AndroidColor.BLACK
+            textSize = 14f
+            isFakeBoldText = true
+            isAntiAlias = true
+        }
+        val boldPaint = Paint().apply {
+            color = AndroidColor.BLACK
+            textSize = 10f
+            isFakeBoldText = true
+            isAntiAlias = true
+        }
+        
+        var y = 40f
+        
+        canvas.drawText("VERUM OMNIS FORENSIC SECTOR REPORT - COURT SAFE", 40f, y, headerPaint)
+        y += 25f
+        
+        canvas.drawText("CASE ID: ${report.caseId}", 40f, y, boldPaint)
+        y += 15f
+        canvas.drawText("EVIDENCE CONTEXT: ${c.title} (${c.evidenceType})", 40f, y, textPaint)
+        y += 15f
+        canvas.drawText("EVIDENCE HASH (SHA-512):", 40f, y, boldPaint)
+        y += 12f
+        if (report.evidenceHash.length >= 64) {
+            canvas.drawText(report.evidenceHash.take(64), 40f, y, textPaint)
+            y += 12f
+            canvas.drawText(report.evidenceHash.drop(64), 40f, y, textPaint)
+        } else {
+            canvas.drawText(report.evidenceHash, 40f, y, textPaint)
+        }
+        y += 20f
+        
+        canvas.drawLine(40f, y, 572f, y, textPaint)
+        y += 20f
+        
+        canvas.drawText("TRIPLE VERIFICATION STATUS ENFORCEMENT: ${report.tripleVerificationStatus}", 40f, y, boldPaint)
+        y += 15f
+        canvas.drawText("Thesis Gate (Positive evidence substrate present): ${if (report.thesisPass) "PASSED" else "FAILED"}", 40f, y, textPaint)
+        y += 15f
+        canvas.drawText("Antithesis Gate (Contradictions cognitive audit): ${if (report.antithesisPass) "PASSED" else "FAILED"}", 40f, y, textPaint)
+        y += 15f
+        canvas.drawText("Synthesis Gate (Nine-Brain Quorum & Guardian Rule): ${if (report.synthesisPass) "PASSED" else "FAILED"}", 40f, y, textPaint)
+        y += 25f
+        
+        canvas.drawText("VERIFIED CONTRADICTION CLUSTERS:", 40f, y, boldPaint)
+        y += 15f
+        if (report.contradictions.isEmpty()) {
+            canvas.drawText("[No active contradictory assertions verified inside the ledger substrate]", 50f, y, textPaint)
+            y += 15f
+        } else {
+            for (contra in report.contradictions) {
+                canvas.drawText("- Topic/Conflict: ${contra.conflictType.uppercase()} - Status: ${contra.status}", 50f, y, boldPaint)
+                y += 12f
+                val summaryLines = if (contra.summary.length > 70) contra.summary.chunked(70) else listOf(contra.summary)
+                for (sLine in summaryLines) {
+                    canvas.drawText("  $sLine", 50f, y, textPaint)
+                    y += 12f
+                }
+                canvas.drawText("  Implicated Testifiers: ${contra.actors.joinToString()}", 50f, y, textPaint)
+                y += 15f
+                if (y > 680f) break
+            }
+        }
+        
+        if (y < 680f) {
+            y = 680f
+        }
+        canvas.drawLine(40f, y, 572f, y, textPaint)
+        y += 15f
+        canvas.drawText("IMMUTABLE CRYPTOGRAPHIC DIGITAL SEAL SIGNATURE:", 40f, y, boldPaint)
+        y += 12f
+        val seal = report.chainOfCustody?.cryptographicSignature ?: "VO-LOCAL-OFFLINE-SEAL-UNDEFINED-SIGNATURE"
+        if (seal.length >= 64) {
+            canvas.drawText(seal.take(64), 40f, y, textPaint)
+            y += 12f
+            canvas.drawText(seal.drop(64), 40f, y, textPaint)
+        } else {
+            canvas.drawText(seal, 40f, y, textPaint)
+        }
+        
+        pdfDocument.finishPage(page)
+        
+        val fileName = "Verum_Omnis_${report.caseId}.pdf"
+        val pdfFile = File(context.cacheDir, fileName)
+        val fileOutputStream = FileOutputStream(pdfFile)
+        pdfDocument.writeTo(fileOutputStream)
+        fileOutputStream.close()
+        pdfDocument.close()
+        
+        val uri = FileProvider.getUriForFile(
+            context,
+            "com.aistudio.verumomnis.vofnsc.fileprovider",
+            pdfFile
+        )
+        val shareIntent = Intent(Intent.ACTION_SEND).apply {
+            type = "application/pdf"
+            putExtra(Intent.EXTRA_STREAM, uri)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            putExtra(Intent.EXTRA_SUBJECT, "Sealed Court-Ready Forensic Certificate - Case ${report.caseId}")
+        }
+        context.startActivity(Intent.createChooser(shareIntent, "Share or Save Court-Sealed Forensic PDF"))
+        Toast.makeText(context, "Forensic Ledger Signed & Sealed Successfully", Toast.LENGTH_LONG).show()
+    } catch (e: Exception) {
+        Toast.makeText(context, "PDF Export Failure: ${e.localizedMessage}", Toast.LENGTH_SHORT).show()
+    }
+}
+
+fun readTextFromUri(context: android.content.Context, uri: Uri): String {
+    return try {
+        context.contentResolver.openInputStream(uri)?.use { inputStream ->
+            inputStream.bufferedReader().use { reader ->
+                reader.readText()
+            }
+        } ?: ""
+    } catch (e: Exception) {
+        "Error reading file content: ${e.localizedMessage}"
+    }
+}
+
+fun getFileNameFromUri(context: android.content.Context, uri: Uri): String {
+    var name = "imported_evidence.txt"
+    try {
+        val cursor = context.contentResolver.query(uri, null, null, null, null)
+        cursor?.use {
+            if (it.moveToFirst()) {
+                val nameIndex = it.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
+                if (nameIndex != -1) {
+                    name = it.getString(nameIndex)
+                }
+            }
+        }
+    } catch (e: Exception) {
+        uri.lastPathSegment?.let { name = it }
+    }
+    return name
+}

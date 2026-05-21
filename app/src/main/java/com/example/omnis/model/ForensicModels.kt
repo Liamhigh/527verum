@@ -137,7 +137,7 @@ data class WitnessCluster(
     val topicSummary: String,
     val actorsInvolved: List<String>,
     val clashDescription: String,
-    val conflictDensityScore: Double
+    val conflictDensityOrdinal: String // "CRITICAL", "HIGH", "MODERATE", "LOW"
 )
 
 @JsonClass(generateAdapter = true)
@@ -164,7 +164,7 @@ data class LiabilityScorecard(
     val candidateContradictionsCount: Int,
     val automatedTags: List<String>, // ["#Cybercrime", "#Fraud"]
     val redFlagsCount: Int,
-    val confidenceWeightedDishonestyIndex: Double // 0.0 to 100.0%
+    val dishonestyOrdinal: String // "EXTREME_DISHONESTY", "HIGH_DISHONESTY", "MODERATE_DISHONESTY", "LOW_DISHONESTY", "NOT_MET"
 )
 
 @JsonClass(generateAdapter = true)

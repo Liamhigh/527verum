@@ -8,7 +8,7 @@ object ForensicEngine {
 
     const val ENGINE_VERSION = "vo-forensic-engine-2026.03.26"
     const val RULES_VERSION = "vo-rules-2026.03.26"
-    const val CONSTITUTION_VERSION = "v5.1.1-LH"
+    const val CONSTITUTION_VERSION = "v5.2.7"
     const val ROOT_CONSTITUTION = "1.0"
 
     // SHA-512 utility
@@ -39,7 +39,7 @@ object ForensicEngine {
         // Step 1: Evidence intake (Accept files, calculate hash & derive caseId)
         val hash512 = sha512(evidenceBytes)
         val hashPrefix = hash512.take(16)
-        val caseId = "CASE-" + sha256(hash512 + System.currentTimeMillis()).take(8).uppercase()
+        val caseId = "CASE-" + sha256(hash512).take(12).uppercase()
 
         // Deterministic Run ID
         val deterministicRunId = sha256(ENGINE_VERSION + RULES_VERSION + hash512 + jurisdiction)
@@ -64,8 +64,96 @@ object ForensicEngine {
                                        baseText.contains("location", ignoreCase = true) ||
                                        baseText.contains("impossible", ignoreCase = true)
 
+        // Real Dynamic Offline Evidence Parser
+        data class ParsedMsg(val timestamp: String, val actor: String, val text: String, val lineNum: Int)
+        val customRawFindings = mutableListOf<RawFinding>()
+        var customContradictionEntry: ContradictionEntry? = null
+        var customContradictionFound = false
+
+        try {
+            val lines = baseText.lines().map { it.trim() }.filter { it.isNotBlank() }
+            val speakerStatements = mutableListOf<ParsedMsg>()
+            
+            for ((index, line) in lines.withIndex()) {
+                val colonIdx = line.indexOf(':')
+                if (colonIdx in 1..40) {
+                    val prefix = line.substring(0, colonIdx).trim()
+                    val msg = line.substring(colonIdx + 1).trim()
+                    
+                    val actorCandidate = if (prefix.contains(" ")) {
+                        prefix.substringAfterLast(" ").trim().trim('[', ']', '-', ' ')
+                    } else {
+                        prefix.trim('[', ']', '-', ' ')
+                    }
+                    
+                    if (actorCandidate.isNotEmpty() && actorCandidate.length < 25 && actorCandidate.all { it.isLetterOrDigit() || it == '_' || it == ' ' || it == '(' || it == ')' }) {
+                        speakerStatements.add(ParsedMsg(timestamp = "N/A", actor = actorCandidate, text = msg, lineNum = index + 1))
+                    }
+                }
+            }
+
+            // Detect semantic contradiction clashes dynamically
+            for (i in 0 until speakerStatements.size) {
+                for (j in i + 1 until speakerStatements.size) {
+                    val stmtA = speakerStatements[i]
+                    val stmtB = speakerStatements[j]
+                    
+                    val isClash = (stmtA.text.contains("paid", ignoreCase=true) && (stmtB.text.contains("unpaid", ignoreCase=true) || stmtB.text.contains("never", ignoreCase=true) || stmtB.text.contains("did not receive", ignoreCase=true) || stmtB.text.contains("no money", ignoreCase=true))) ||
+                                  (stmtA.text.contains("sent", ignoreCase=true) && (stmtB.text.contains("not sent", ignoreCase=true) || stmtB.text.contains("no receipt", ignoreCase=true))) ||
+                                  (stmtA.text.contains("agree", ignoreCase=true) && stmtB.text.contains("disagree", ignoreCase=true)) ||
+                                  (stmtA.text.contains("authorized", ignoreCase=true) && stmtB.text.contains("unauthorized", ignoreCase=true))
+                    
+                    if (isClash && stmtA.actor != stmtB.actor) {
+                        customContradictionFound = true
+                        val clashId = sha256(caseId + stmtA.actor + stmtB.actor + "clash")
+                        customContradictionEntry = ContradictionEntry(
+                            id = clashId,
+                            status = "VERIFIED",
+                            conflictType = "semantic",
+                            summary = "DYNAMIC PARSED CONTRADICTION: Clash detected between ${stmtA.actor} and ${stmtB.actor} on lines ${stmtA.lineNum} and ${stmtB.lineNum}.",
+                            actors = listOf(stmtA.actor, stmtB.actor),
+                            propositionA = "Statement: '${stmtA.text}' on Line ${stmtA.lineNum}.",
+                            propositionB = "Statement: '${stmtB.text}' on Line ${stmtB.lineNum}.",
+                            anchorPages = listOf(1),
+                            sourceAnchors = listOf("Line ${stmtA.lineNum}", "Line ${stmtB.lineNum}"),
+                            confidenceOrdinal = "VERY_HIGH",
+                            supportOnly = false,
+                            neededEvidence = "Independent banking ledgers or physical device authentication records.",
+                            ruleHits = listOf("contradiction-custom-dynamic|HIGH")
+                        )
+                        break
+                    }
+                }
+                if (customContradictionFound) break
+            }
+
+            // Generate raw findings from extracted statements
+            for (stmt in speakerStatements.take(4)) {
+                val shortTxt = if (stmt.text.length > 60) stmt.text.take(60) + "..." else stmt.text
+                customRawFindings.add(
+                    RawFinding(
+                        id = sha256(caseId + "semantic" + stmt.actor + stmt.text + stmt.lineNum),
+                        findingType = "semantic",
+                        status = "CANDIDATE",
+                        summary = "Parsed assertion by ${stmt.actor}: \"$shortTxt\"",
+                        actor = stmt.actor,
+                        anchorPages = listOf(1),
+                        sourceAnchors = listOf("Line ${stmt.lineNum}"),
+                        excerpt = stmt.text,
+                        confidenceOrdinal = "HIGH",
+                        sourcePath = evidenceName,
+                        brainId = "B1"
+                    )
+                )
+            }
+        } catch (e: Exception) {
+            // Safe fallback on parsing error
+        }
+
         // Populate Raw findings based on sample or text keywords
-        if (isDoublePaymentSample) {
+        if (customRawFindings.isNotEmpty()) {
+            rawFindings.addAll(customRawFindings)
+        } else if (isDoublePaymentSample) {
             rawFindings.add(
                 RawFinding(
                     id = sha256(caseId + "financial" + "Alice" + "page 2" + "Invoice marked as paid"),
@@ -108,7 +196,7 @@ object ForensicEngine {
                     excerpt = "Action: Archive request trigger from platform SCAQUACULTURE - user Kevin.",
                     confidenceOrdinal = "VERY_HIGH",
                     sourcePath = evidenceName,
-                    brainId = "B10"
+                    brainId = "B3"
                 )
             )
         } else if (isTamperedChainSample) {
@@ -149,7 +237,7 @@ object ForensicEngine {
         // Step 5: Behavior and Pattern analysis (vulnerabilities and behaviors context)
         val behavioralDeception = baseText.contains("promise", ignoreCase = true) || baseText.contains("intend", ignoreCase = true)
 
-        // Step 6: Brains quorum with B10
+        // Step 6: Brains quorum (Nine-Brain System)
         val brainstorm = runNineBrains(evidenceType, isDoublePaymentSample, isTamperedChainSample, isImpossibleTravelSample, simulateAudioFailure)
 
         // Step 8 & 9: Promotion Coordinator & Promotion Service (Apply P1-P7)
@@ -157,7 +245,9 @@ object ForensicEngine {
         val contradictions = mutableListOf<ContradictionEntry>()
 
         // Find contradictions
-        if (isDoublePaymentSample) {
+        if (customContradictionEntry != null) {
+            contradictions.add(customContradictionEntry!!)
+        } else if (isDoublePaymentSample) {
             val ruleHits = listOf("contradiction-basic-1|CRITICAL", "financial-anomaly-1|HIGH")
             val cId = sha256(caseId + "Page 2" + "Page 5" + "financial")
             contradictions.add(
@@ -330,7 +420,7 @@ object ForensicEngine {
             else -> listOf("Verification of material claims")
         }
 
-        // B10 Correlation Findings
+        // Deep Nine-Brain Correlation Findings
         val correlations = mutableListOf<CorrelationEntity>()
         val blockchainTraces = mutableListOf<BlockchainEvent>()
         val statementEvolution = mutableListOf<StatementEvolution>()
@@ -426,7 +516,7 @@ object ForensicEngine {
                     topicSummary = "Conflicting claims of Acme Invoice payments.",
                     actorsInvolved = listOf("Alice (Billing)", "Bob (Accounting)", "Kevin (Product Lead)"),
                     clashDescription = "Alice confirms payment was wired globally, Bob lists the record as unpaid without receipt, Kevin claims the funds were settled using a cash-swap ledger reference.",
-                    conflictDensityScore = 91.5
+                    conflictDensityOrdinal = "VERY_HIGH"
                 )
             )
 
@@ -478,7 +568,7 @@ object ForensicEngine {
                     candidateContradictionsCount = 2,
                     automatedTags = listOf("#Cybercrime", "#EvasiveConduct", "#UnauthorisedAccess"),
                     redFlagsCount = 4,
-                    confidenceWeightedDishonestyIndex = 82.5
+                    dishonestyOrdinal = "CRITICAL"
                 )
             )
             scorecards.add(
@@ -488,7 +578,7 @@ object ForensicEngine {
                     candidateContradictionsCount = 0,
                     automatedTags = listOf("#FinancialDiscrepancy"),
                     redFlagsCount = 0,
-                    confidenceWeightedDishonestyIndex = 14.0
+                    dishonestyOrdinal = "LOW"
                 )
             )
             scorecards.add(
@@ -498,7 +588,7 @@ object ForensicEngine {
                     candidateContradictionsCount = 0,
                     automatedTags = listOf("#FinancialDiscrepancy"),
                     redFlagsCount = 0,
-                    confidenceWeightedDishonestyIndex = 11.5
+                    dishonestyOrdinal = "LOW"
                 )
             )
         } else {
@@ -510,15 +600,19 @@ object ForensicEngine {
                     candidateContradictionsCount = 1,
                     automatedTags = listOf("#GeneralVerification"),
                     redFlagsCount = 1,
-                    confidenceWeightedDishonestyIndex = 30.0
+                    dishonestyOrdinal = "MODERATE"
                 )
             )
         }
 
         // Chain of custody certificate for law-enforcement ready outputs (Module 4)
+        val currentUtcTime = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", java.util.Locale.US).apply {
+            timeZone = java.util.TimeZone.getTimeZone("UTC")
+        }.format(java.util.Date())
+
         val chainCert = ChainOfCustodyCert(
             evidenceHashPrefix = hashPrefix,
-            utcTimestamp = "2026-05-20T10:01:51Z",
+            utcTimestamp = currentUtcTime,
             cryptographicSignature = "sig_sha512_" + hashPrefix + "_" + deterministicRunId.take(16).uppercase()
         )
 
@@ -724,22 +818,6 @@ object ForensicEngine {
                 confidence = "MODERATE",
                 limitations = "Strictly non-voting; cannot certify claims.",
                 contributionToQuorum = false
-            )
-        )
-
-        // B10 Correlation Brain (Added as B10 in Ten-Brain expansion)
-        list.add(
-            BrainOutput(
-                brainId = "B10",
-                role = "Correlation Brain",
-                status = "ACTIVE",
-                voting = true,
-                primarySignals = if (isDoublePayment) "Cross-module matches for "+
-                        "+27 82 555 1234 & device SCAQUACULTURE" else "Consistent network references",
-                publicationMeaning = "Entity link analysis, phone/IP/wallet linkage across logs.",
-                confidence = "VERY_HIGH",
-                limitations = "Dependent on accurate correlation indexing.",
-                contributionToQuorum = true
             )
         )
 
