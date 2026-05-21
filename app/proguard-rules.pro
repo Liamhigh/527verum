@@ -5,17 +5,32 @@
 # For more details, see
 #   http://developer.android.com/guide/developing/tools/proguard.html
 
-# If your project uses WebView with JS, uncomment the following
-# and specify the fully qualified class name to the JavaScript interface
-# class:
-#-keepclassmembers class fqcn.of.javascript.interface.for.webview {
-#   public *;
-#}
+# Keep Kotlin reflect / Metadata
+-keep class kotlin.reflect.jvm.internal.** {*;}
+-keepattributes Signature, InnerClasses, EnclosingMethod, *Annotation*, Metadata
 
-# Uncomment this to preserve the line number information for
-# debugging stack traces.
-#-keepattributes SourceFile,LineNumberTable
+# Moshi Proguard rules
+-keep class com.squareup.moshi.** { *; }
+-keep interface com.squareup.moshi.** { *; }
+-dontwarn com.squareup.moshi.**
 
-# If you keep the line number information, uncomment this to
-# hide the original source file name.
-#-renamesourcefileattribute SourceFile
+# Keep our data models and their generated Moshi JSON adapters
+-keep class com.example.omnis.model.** { *; }
+-keep class * implements com.squareup.moshi.JsonAdapter { *; }
+-keep class * extends com.squareup.moshi.JsonAdapter { *; }
+-keepclassmembers class com.example.omnis.model.** { 
+    <fields>; 
+    <init>(...); 
+}
+-keep class com.example.omnis.model.*JsonAdapter { *; }
+
+# Jetpack Room rules
+-keep class * extends androidx.room.RoomDatabase
+-keep class * implements androidx.room.RoomDatabase
+-keep class * extends androidx.room.Entity
+-dontwarn androidx.room.**
+
+# Jetpack Compose lifecycle/viewmodel keep
+-keep class androidx.lifecycle.ViewModel { *; }
+-keep class * extends androidx.lifecycle.ViewModel
+

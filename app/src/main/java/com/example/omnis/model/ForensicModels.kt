@@ -204,7 +204,7 @@ data class ReportRenderInput(
     val legalMappings: List<String> = emptyList(),
     val legalIssueHints: List<String> = emptyList(),
     val boundaryNote: String = "This is a forensic conclusion, not a judicial verdict.",
-    val b10CorrelationFindings: List<CorrelationEntity> = emptyList(),
+    val crossBrainCorrelations: List<CorrelationEntity> = emptyList(),
     val blockchainTraces: List<BlockchainEvent> = emptyList(),
     val statementEvolutionLedger: List<StatementEvolution> = emptyList(),
     val crossWitnessClusters: List<WitnessCluster> = emptyList(),
